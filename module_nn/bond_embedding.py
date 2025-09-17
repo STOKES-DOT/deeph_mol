@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 
 class Bond_Embedding(nn.Module):
-    def __init__(self, mol2,files,index, *args, **kwargs):
+    def __init__(self, mol2,files=None,index=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mol2 = mol2
         self.bond_type_matrix = self.get_bond_type()
@@ -35,19 +35,19 @@ class Bond_Embedding(nn.Module):
         index = []
         n_atoms = len(atoms)
         for i in range(n_atoms):
-            for j in range(i+1,n_atoms):
+            for j in range(n_atoms):
                 index1, atom1, x1, y1, z1 = atoms[i]
                 index2, atom2, x2, y2, z2 = atoms[j]
-                distance.append(np.linalg.norm(np.array([x1,y1,z1])-np.array([x2,y2,z2]), ord=2))
+                distance.append((x1-x2)**2+(y1-y2)**2+(z1-z2)**2)
                 index.append((index1,index2))
         return distance, index
     
-    def _gaussian_basis(self,rij,sigma=1,mu=0):
-        if rij <= 10:
-            rij=rij
+    def _gaussian_basis(self,rij,sigma=20,mu=3,cutoff=10):
+        if np.sqrt(rij) <= cutoff:
+            var_eps = 1/(np.sqrt(2*np.pi*sigma**2))*np.exp(-(np.sqrt(rij)-mu)**2/(2*sigma**2))
         else:
-            rij=0
-        var_eps=1/(np.sqrt(2*np.pi*sigma**2))*np.exp(-(np.sqrt(rij)-mu)**2/(2*sigma**2))
+            var_eps = 0
+        
         return var_eps
     def gaussian_basis_matrix(self,sigma=1,mu=0):
         distance, index = self.get_atom_pairs_distance()
@@ -78,7 +78,7 @@ class Bond_Embedding(nn.Module):
             if atom_section and line.strip():
                 parts = line.split()
                 if len(parts) >= 4:
-                    bond_type.append(parts[3])
+                    bond_type.append(str(parts[3]))
                     atom1.append(int(parts[1]))
                     atom2.append(int(parts[2]))
         for i in range(len(atom1)):
@@ -92,8 +92,6 @@ class Bond_Embedding(nn.Module):
                 bond_type[i] = 1.5
             if bond_type[i] == 'am':
                 bond_type[i] = 1.2
-            else:
-                bond_type[i] = 0
         max_index = max(max(atom1),max(atom2))
         bond_type_matrix = np.zeros((max_index, max_index))
         for values, (i,j) in zip(bond_type,zip(atom1,atom2)):
@@ -106,18 +104,13 @@ class Bond_Embedding(nn.Module):
         save_npz(f'{self.files}/{self.index}_g.npz',gaussian_matrix)
         bond_type_matrix = csr_matrix(self.bond_type_matrix)
         save_npz(f'{self.files}/{self.index}_b.npz',bond_type_matrix)
-    
-if __name__ == '__main__':
-    bond_embedding = Bond_Embedding('/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/3000.mol2','/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/edges',3000)
-    bond_embedding.get_bond_type()
-    bond_type_matrix = bond_embedding.get_bond_type()
-    gb_matrix = bond_embedding.gaussian_basis_matrix()
-    bond_embedding.save_matrix()
-    
-    for i in range(1,3000):
-        bond_embedding = Bond_Embedding(f'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/{i}.mol2','/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/edges',i)
-        bond_embedding.get_bond_type()
-        bond_type_matrix = bond_embedding.get_bond_type()
-        gb_matrix = bond_embedding.gaussian_basis_matrix()
-        bond_embedding.save_matrix()
-#NOTE: the bond type matrix has some bug leading to a empty matrix output!!!
+
+
+# if __name__ == '__main__':
+#     for i in range(1,3000):
+#         mol2 = f'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/{i}.mol2'
+#         bond_embed = Bond_Embedding(mol2,'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/edges',i)
+#         bond_embed.get_bond_type()
+#         bond_embed.gaussian_basis_matrix()
+#         bond_embed.save_matrix()
+#NOTE: the bond type matrix has some bug leading to a empty matrix output!!!（Has been corrected）

@@ -1,0 +1,28 @@
+import numpy as np
+import torch
+import torch.nn as nn
+import atom_embedding
+class Nodes_Embedding(nn.Module):#node feature embedding with MLP
+    def __init__(self,mol2):
+        super().__init__()
+        self.mol2 = mol2
+        self.atom_embed = atom_embedding.Atom_Embedding(self.mol2)
+        self.atom_type_vector = self.atom_embed.atom_type_to_vector()
+        self.num_atoms = len(self.atom_embed.get_atom_type())
+        self.atom_part = self.atom_embed.atom_molecular_part()
+        self.flatten = nn.Flatten()
+        self.nodes_embedding = nn.Sequential(
+            nn.Linear(self.num_atoms,self.num_atoms),
+            nn.ReLU(),
+            nn.Linear(self.num_atoms,self.num_atoms),
+            nn.ReLU(),
+            nn.Linear(self.num_atoms,self.num_atoms),
+            nn.ReLU(),
+        )
+    def forward(self):
+        return self.nodes_embedding(self.atom_type_vector)
+    
+if __name__ == '__main__':
+    mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/1.mol2'
+    nodes_embed = Nodes_Embedding(mol2)
+    print(nodes_embed.forward())
