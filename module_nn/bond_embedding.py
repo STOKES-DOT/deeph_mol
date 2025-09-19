@@ -41,7 +41,37 @@ class Bond_Embedding(nn.Module):
                 distance.append((x1-x2)**2+(y1-y2)**2+(z1-z2)**2)
                 index.append((index1,index2))
         return distance, index
-    
+    def get_atom_pairs_direction(self):
+        atoms = []
+        with open(self.mol2, 'r') as f:
+            lines = f.readlines()
+        atom_section = False
+        for line in lines:
+            if line.startswith('@<TRIPOS>ATOM'):
+                atom_section = True
+                continue
+            elif line.startswith('@<TRIPOS>'):
+                atom_section = False
+                continue
+            if atom_section and line.strip():
+                parts = line.split()
+                if len(parts) >= 6: 
+                    atom_index = int(parts[0])
+                    atom_name = parts[1][:2].title()
+                    x = float(parts[2])
+                    y = float(parts[3])
+                    z = float(parts[4])
+                    atoms.append((atom_index,atom_name,x,y,z))
+        direction = []
+        index = []
+        n_atoms = len(atoms)
+        for i in range(n_atoms):
+            for j in range(n_atoms):
+                index1, atom1, x1, y1, z1 = atoms[i]
+                index2, atom2, x2, y2, z2 = atoms[j]
+                direction.append((x2-x1,y2-y1,z2-z1))
+                index.append((index1,index2))
+        return direction, index
     def _gaussian_basis(self,rij,sigma=20,mu=3,cutoff=10):
         if np.sqrt(rij) <= cutoff:
             var_eps = 1/(np.sqrt(2*np.pi*sigma**2))*np.exp(-(np.sqrt(rij)-mu)**2/(2*sigma**2))
@@ -106,11 +136,11 @@ class Bond_Embedding(nn.Module):
         save_npz(f'{self.files}/{self.index}_b.npz',bond_type_matrix)
 
 
-# if __name__ == '__main__':
-#     for i in range(1,3000):
-#         mol2 = f'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/{i}.mol2'
-#         bond_embed = Bond_Embedding(mol2,'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/edges',i)
-#         bond_embed.get_bond_type()
-#         bond_embed.gaussian_basis_matrix()
-#         bond_embed.save_matrix()
+if __name__ == '__main__':
+    mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/3.mol2'
+    bond_embed = Bond_Embedding(mol2,'/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/edges',3)
+    bond_embed.get_bond_type()
+    bond_embed.gaussian_basis_matrix()
+    print(bond_embed.gb_matrix)
+    print(bond_embed.bond_type_matrix)
 #NOTE: the bond type matrix has some bug leading to a empty matrix output!!!（Has been corrected）

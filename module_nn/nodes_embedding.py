@@ -20,14 +20,16 @@ class Nodes_Embedding(nn.Module):#node feature embedding with MLP
             nn.Linear(16,16),
             nn.ELU(),
         )
+        
     def forward(self):
+        atom_part_embed = self.atom_embed.atom_molecular_part()
         nodes1=[]
-        for atom_v in self.atom_type_vector:
+        for atom_v,atom_part in zip(self.atom_type_vector,self.atom_part):
             atom_v = torch.tensor(atom_v, dtype=torch.float32)
-            nodes1.append(self.nodes_embedding(atom_v))
+            nodes1.append(self.nodes_embedding(atom_v)+torch.tensor(atom_part, dtype=torch.float32))
         return torch.stack(nodes1)
     
 if __name__ == '__main__':
-    mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/1.mol2'
+    mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/2000.mol2'
     nodes_embed = Nodes_Embedding(mol2)
     print(nodes_embed.forward())
