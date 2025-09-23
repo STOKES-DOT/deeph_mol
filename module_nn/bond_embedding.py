@@ -71,8 +71,8 @@ class Bond_Embedding(nn.Module):
                 index2, atom2, x2, y2, z2 = atoms[j]
                 direction.append((x2-x1,y2-y1,z2-z1))
                 index.append((index1,index2))
-        return direction, index
-    def _gaussian_basis(self,rij,sigma=20,mu=3,cutoff=10):
+        return direction
+    def _gaussian_basis(self,rij,sigma=20,mu=3,cutoff=20):
         if np.sqrt(rij) <= cutoff:
             var_eps = 1/(np.sqrt(2*np.pi*sigma**2))*np.exp(-(np.sqrt(rij)-mu)**2/(2*sigma**2))
         else:
@@ -134,7 +134,12 @@ class Bond_Embedding(nn.Module):
         save_npz(f'{self.files}/{self.index}_g.npz',gaussian_matrix)
         bond_type_matrix = csr_matrix(self.bond_type_matrix)
         save_npz(f'{self.files}/{self.index}_b.npz',bond_type_matrix)
-
+    def forward(self):
+        distance, index = self.get_atom_pairs_distance()
+        direction, index = self.get_atom_pairs_direction()
+        bond_type_matrix = self.get_bond_type()
+        gb_matrix = self.gaussian_basis_matrix()
+        return distance, index, direction, bond_type_matrix, gb_matrix
 
 if __name__ == '__main__':
     mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/3.mol2'

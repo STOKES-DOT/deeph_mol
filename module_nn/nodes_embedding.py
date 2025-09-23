@@ -8,7 +8,9 @@ class Nodes_Embedding(nn.Module):#node feature embedding with MLP
         self.mol2 = mol2
         self.atom_embed = atom_embedding.Atom_Embedding(self.mol2)
         atom_type_vector = self.atom_embed.atom_type_to_vector()
+        atom_charge = self.atom_embed.atom_charge()
         self.register_buffer('atom_type_vector', torch.tensor(atom_type_vector, dtype=torch.float32))
+        self.register_buffer('atom_charge', torch.tensor(atom_charge, dtype=torch.float32))
         self.num_atoms = len(self.atom_embed.get_atom_type())
         self.atom_part = self.atom_embed.atom_molecular_part()
         self.flatten = nn.Flatten()
@@ -26,7 +28,7 @@ class Nodes_Embedding(nn.Module):#node feature embedding with MLP
         nodes1=[]
         for atom_v,atom_part in zip(self.atom_type_vector,self.atom_part):
             atom_v = torch.tensor(atom_v, dtype=torch.float32)
-            nodes1.append(self.nodes_embedding(atom_v)+torch.tensor(atom_part, dtype=torch.float32))
+            nodes1.append(self.nodes_embedding(atom_v)+torch.tensor(atom_part, dtype=torch.float32)+self.atom_charge[atom_part])
         return torch.stack(nodes1)
     
 if __name__ == '__main__':

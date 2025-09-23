@@ -16,10 +16,8 @@ class GATlayer_Base(torch.nn.Module):
         self.concat = concat  # whether we should concatenate or average the attention heads
         self.add_skip_connection = add_skip_connection
         self.proj_param = nn.Parameter(torch.Tensor(num_of_heads, num_in_features, num_out_features))
-        self.scoring_fn_target = nn.Parameter(torch.Tensor(1, num_of_heads, num_out_features))
-        self.scoring_fn_source = nn.Parameter(torch.Tensor(1, num_of_heads, num_out_features))
-        self.scoring_fn_target = nn.Parameter(self.scoring_fn_target.reshape(num_of_heads, num_out_features, 1))
-        self.scoring_fn_source = nn.Parameter(self.scoring_fn_source.reshape(num_of_heads, num_out_features, 1))
+        self.scoring_fn_target = nn.Parameter(torch.Tensor(num_of_heads, num_out_features, 1))
+        self.scoring_fn_source = nn.Parameter(torch.Tensor(num_of_heads, num_out_features, 1))
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(num_of_heads * num_out_features))
@@ -56,21 +54,17 @@ class GATlayer_Base(torch.nn.Module):
             self.attention_weights = attention_coefficients
         if not out_nodes_features.is_contiguous():
             out_nodes_features = out_nodes_features.contiguous()
-        """AI is creating summary for skip_concat_bias
-
-        Returns:
-            [type]: [description]
-        """
+        if out_nodes_features.dim() != 3 or out_nodes_features.size(1) != self.num_of_heads:
+            out_nodes_features = out_nodes_features.view(-1, self.num_of_heads, self.num_out_features)
         if self.add_skip_connection:  # add skip or residual connection
             if out_nodes_features.shape[-1] == in_nodes_features.shape[-1]:  
                 out_nodes_features += in_nodes_features.unsqueeze(1)
             else:
                 out_nodes_features += self.skip_proj(in_nodes_features).view(-1, self.num_of_heads, self.num_out_features)
-
         if self.concat:
             out_nodes_features = out_nodes_features.view(-1, self.num_of_heads * self.num_out_features)
         else:
-            out_nodes_features = out_nodes_features.mean(dim=self.head_dim)
+            out_nodes_features = out_nodes_features.mean(dim=1)
 
         if self.bias is not None:
             out_nodes_features += self.bias
@@ -79,7 +73,7 @@ class GATlayer_Base(torch.nn.Module):
 
     
 class GATlayer(GATlayer_Base):
-    def __init__(self, num_in_features, num_out_features, num_heads, dropout=0.1, concat=True,activation=nn.ELU(), add_skip_connection=True, bias=None, log_attention_weights=None):
+    def __init__(self, num_in_features, num_out_features, num_heads=1, dropout=0.5, concat=True,activation=nn.ELU(), add_skip_connection=None, bias=None, log_attention_weights=True):
         super(GATlayer, self).__init__(num_in_features, num_out_features, num_heads, concat=concat, activation=activation, add_skip_connection=add_skip_connection, bias=bias, log_attention_weights=log_attention_weights)
         self.num_in_features = num_in_features
         self.num_out_features = num_out_features
@@ -94,29 +88,36 @@ class GATlayer(GATlayer_Base):
         nodes = nodes_features
         edges1 = edges_features_distance
         edges2 = edges_features_bond
-        weight_degree_matrix_net = degree_matrix+edges2
-        connectivity_mask = torch.where(weight_degree_matrix_net>0,weight_degree_matrix_net,
-            torch.where(
-                edges2>cutoff,
-                edges2+weight_degree_matrix_net,
-                -1e9
-            ))#edges with distance larger than cutoff will be masked
+
+        connectivity_mask = torch.where(degree_matrix>0,degree_matrix,-1e9)
         num_of_nodes = nodes.size(0)
         assert connectivity_mask.shape == (num_of_nodes,num_of_nodes),f"connectivity_mask shape error,expected {(num_of_nodes,num_of_nodes)},got {connectivity_mask.shape}"
         
         nodes_features = self.dropout(nodes_features)
         nodes_features_proj = torch.matmul(nodes_features.unsqueeze(0),self.proj_param)
-        nodes_features_proj = self.dropout(nodes_features_proj)
-
-        scores_source = torch.bmm(nodes_features_proj,self.scoring_fn_source)
-        scores_target = torch.bmm(nodes_features_proj,self.scoring_fn_target)
-        all_scores = self.leakyReLU(scores_source + scores_target.transpose(1,2))
-        all_attention_coefficients = torch.softmax(all_scores + connectivity_mask,dim=1)
         
+        
+        nodes_features_proj = self.dropout(nodes_features_proj)#Value
+        scores_source = torch.bmm(nodes_features_proj,self.scoring_fn_source)#Key
+        scores_target = torch.bmm(nodes_features_proj,self.scoring_fn_target)#Query
+        
+        #compute attention coefficients
+        all_scores = self.leakyReLU(scores_source + scores_target.transpose(1,2))
+        all_attention_coefficients = torch.softmax(all_scores + connectivity_mask.unsqueeze(0),dim=-1)
+        
+        #uodate node features with attention coefficients
         out_nodes_features = torch.bmm(all_attention_coefficients, nodes_features_proj)
-        out_nodes_features = out_nodes_features.transpose(0,1)
+        
+        out_nodes_features = out_nodes_features.transpose(2,1)
+        
         out_nodes_features = self.skip_concat_bias(all_attention_coefficients, nodes_features, out_nodes_features)
-        connectivity_mask = nn.LayerNorm(connectivity_mask.shape[0])(connectivity_mask)
+        
+        #update connectivity mask with edges features and node interaction
+        node_interaction = torch.matmul(nodes_features, nodes_features.transpose(0, 1))
+        connectivity_mask = torch.relu(edges1 + edges2 + node_interaction)
+        #layer norm
+        connectivity_mask = torch.layer_norm(connectivity_mask, connectivity_mask.shape)
+        out_nodes_features = torch.layer_norm(out_nodes_features, out_nodes_features.shape)
         return (out_nodes_features, connectivity_mask)
     
 if __name__ == '__main__':
@@ -125,9 +126,7 @@ if __name__ == '__main__':
     nodes_features = nodes_embed.forward()
     edges_embedding_embed = edges_embedding.Edges_Embedding(mol2)
     edges1, edges2, degree_tensor = edges_embedding_embed.forward()
-    gat_layer = GATlayer(nodes_features.shape[1], nodes_features.shape[1], 3)
+    gat_layer = GATlayer(nodes_features.shape[1], nodes_features.shape[1], 1)
     out_nodes_features, connectivity_mask = gat_layer(nodes_features, degree_tensor, edges1, edges2)
     print(out_nodes_features)
     print(out_nodes_features.shape)
-    print(connectivity_mask)
-    print(connectivity_mask.shape)

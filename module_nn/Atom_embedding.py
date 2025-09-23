@@ -74,8 +74,34 @@ class Atom_Embedding(nn.Module):
                     atom_symbol = parts[6][:2].title()
                     atom_molecule_part.append(int(atom_symbol))
         return atom_molecule_part
+    def atom_charge(self):
+        atom_charge = []
+        with open(self.mol2, 'r') as f:
+            lines = f.readlines()
+        atom_section = False
+        for line in lines:
+            if line.startswith('@<TRIPOS>ATOM'):
+                atom_section = True
+                continue
+            elif line.startswith('@<TRIPOS>'):
+                atom_section = False
+                continue
+            if atom_section and line.strip():
+                parts = line.split()
+                if len(parts) >= 6: 
+                    atom_symbol = parts[8][:-1]
+                    atom_charge.append(float(atom_symbol))
+        return atom_charge
+    def forward(self):
+        atom_type_vector = self.atom_type_to_vector()
+        atom_part = self.atom_molecular_part()
+        atom_charge = self.atom_charge()
+        return atom_type_vector, atom_part, atom_charge
+    
 
 if __name__ == '__main__':
     atom_embed = Atom_Embedding('/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/1.mol2')
+    print(atom_embed.atom_types)
     print(atom_embed.atom_type_to_vector())
     print(atom_embed.atom_molecular_part())
+    print(atom_embed.atom_charge())
