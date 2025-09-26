@@ -90,6 +90,7 @@ class GATlayer(GATlayer_Base):
         edges2 = edges_features_bond
 
         connectivity_mask = torch.where(degree_matrix>0,degree_matrix,-1e9)
+    
         num_of_nodes = nodes.size(0)
         assert connectivity_mask.shape == (num_of_nodes,num_of_nodes),f"connectivity_mask shape error,expected {(num_of_nodes,num_of_nodes)},got {connectivity_mask.shape}"
         

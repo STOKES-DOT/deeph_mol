@@ -28,16 +28,6 @@ class Edges_Embedding(nn.Module):#edge feature embedding with MLP
             nn.Linear(self.hidden_dim,self.features_dim),
             nn.LeakyReLU(),
         )
-        self.weight_degree_matrix_net = nn.Sequential(
-            nn.Linear(self.features_dim*3,self.features_dim*3),
-            nn.Sigmoid(),
-            nn.Linear(self.features_dim*3,self.hidden_dim),
-            nn.ReLU(),
-            nn.Linear(self.hidden_dim,self.hidden_dim),
-            nn.Sigmoid(),
-            nn.Linear(self.hidden_dim,self.features_dim),
-            nn.LeakyReLU(),
-        )
     def get_degree_matrix(self):#NOTE:may have some problems
         self.num_atoms = self.bond_type_matrix.shape[0]
         degree_matrix = np.zeros((self.num_atoms,self.num_atoms))
@@ -53,12 +43,13 @@ class Edges_Embedding(nn.Module):#edge feature embedding with MLP
         edge_info2 = (edge_info2 + edge_info2.transpose(0, 1)) / 2
         degree_matrix = torch.tensor(self.get_degree_matrix(), dtype=torch.float32)
         return edge_info1, edge_info2, degree_matrix
-    #NOTE:we only need a weighted degree matrix with distance and bond type information
+
     
     
 if __name__ == '__main__':
     mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/3.mol2'
     edges_embed = Edges_Embedding(mol2)
     nodes1, nodes2, degree_matrix = edges_embed.forward()
-    weight_degree_matrix = edges_embed.forword_all()
-    print(weight_degree_matrix.shape)
+    print(nodes1.shape)
+    print(nodes2.shape)
+    print(degree_matrix.shape)
