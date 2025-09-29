@@ -13,12 +13,26 @@ class Edges_Embedding(nn.Module):#edge feature embedding with MLP
         self.bond_matrix = bond_type_matrix
         self.register_buffer('gb_matrix', torch.tensor(gb_matrix, dtype=torch.float32))
         self.register_buffer('bond_type_matrix', torch.tensor(bond_type_matrix, dtype=torch.float32))
+   
+        if len(self.gb_matrix.shape) != 2:
+            raise ValueError(f"Expected 2D gb_matrix, got shape {self.gb_matrix.shape}")
+        
         self.edges_size = self.gb_matrix.shape[1]
         self.hidden_dim = 10
         
         self.features_dim = self.gb_matrix.shape[1]
         self.flatten = nn.Flatten()
-        self.edges_embedding = nn.Sequential(
+        self.edges_embedding_dist = nn.Sequential(
+            nn.Linear(self.features_dim,self.hidden_dim),
+            nn.Sigmoid(),
+            nn.Linear(self.hidden_dim,self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim,self.hidden_dim),
+            nn.Sigmoid(),
+            nn.Linear(self.hidden_dim,self.features_dim),
+            nn.LeakyReLU(),
+        )
+        self.edges_embedding_type = nn.Sequential(
             nn.Linear(self.features_dim,self.hidden_dim),
             nn.Sigmoid(),
             nn.Linear(self.hidden_dim,self.hidden_dim),
@@ -37,8 +51,8 @@ class Edges_Embedding(nn.Module):#edge feature embedding with MLP
                     degree_matrix[i,j] = 1
         return degree_matrix
     def forward(self):
-        edge_info1 = self.edges_embedding(self.gb_matrix)
-        edge_info2 = self.edges_embedding(self.bond_type_matrix)
+        edge_info1 = self.edges_embedding_dist(self.gb_matrix)
+        edge_info2 = self.edges_embedding_type(self.bond_type_matrix)
         edge_info1 = (edge_info1 + edge_info1.transpose(0, 1)) / 2
         edge_info2 = (edge_info2 + edge_info2.transpose(0, 1)) / 2
         degree_matrix = torch.tensor(self.get_degree_matrix(), dtype=torch.float32)

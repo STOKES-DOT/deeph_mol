@@ -105,20 +105,21 @@ class GATlayer(GATlayer_Base):
         #compute attention coefficients
         all_scores = self.leakyReLU(scores_source + scores_target.transpose(1,2))
         all_attention_coefficients = torch.softmax(all_scores + connectivity_mask.unsqueeze(0),dim=-1)
-        
+        with torch.no_grad():
         #uodate node features with attention coefficients
-        out_nodes_features = torch.bmm(all_attention_coefficients, nodes_features_proj)
+            out_nodes_features = torch.bmm(all_attention_coefficients, nodes_features_proj)
         
-        out_nodes_features = out_nodes_features.transpose(2,1)
+            out_nodes_features = out_nodes_features.transpose(2,1)
         
-        out_nodes_features = self.skip_concat_bias(all_attention_coefficients, nodes_features, out_nodes_features)
+            out_nodes_features = self.skip_concat_bias(all_attention_coefficients, nodes_features, out_nodes_features)
         
         #update connectivity mask with edges features and node interaction
-        node_interaction = torch.matmul(nodes_features, nodes_features.transpose(0, 1))
-        connectivity_mask = torch.relu(edges1 + edges2 + node_interaction)
+            node_interaction = torch.matmul(nodes_features, nodes_features.transpose(0, 1))
+            connectivity_mask = torch.relu(edges1 + edges2 + node_interaction)
+            connectivity_mask = connectivity_mask+connectivity_mask.T
         #layer norm
-        connectivity_mask = torch.layer_norm(connectivity_mask, connectivity_mask.shape)
-        out_nodes_features = torch.layer_norm(out_nodes_features, out_nodes_features.shape)
+            connectivity_mask = torch.layer_norm(connectivity_mask, connectivity_mask.shape[-1:])
+            out_nodes_features = torch.layer_norm(out_nodes_features, out_nodes_features.shape[-1:])
         return (out_nodes_features, connectivity_mask)
     
 if __name__ == '__main__':
