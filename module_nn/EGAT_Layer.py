@@ -18,7 +18,9 @@ class EGAT_layer_base(nn.Module):
         self.num_heads = num_heads
         self.concat = concat
         self.lmax = lmax
-        
+        self.log_attention_weights = log_attention_weights
+        self.add_skip_connection = add_skip_connection
+        self.bias = bias
         if add_skip_connection:
             self.skip_linear = nn.Linear(num_in_features, num_out_features, bias=False)
         else:
@@ -27,11 +29,32 @@ class EGAT_layer_base(nn.Module):
         for tp in [self.tp_query, self.tp_key, self.tp_value, self.edge_tp_distance, self.edge_tp_bond]:
             for weight in tp.parameters():
                 if weight.dim() > 1:
-                    torch.manual_seed(42)
+                    #torch.manual_seed(42) #NOTE:testing
                     nn.init.xavier_uniform_(weight)
         
         if self.skip_linear is not None:
             nn.init.xavier_uniform_(self.skip_linear.weight)
+    def skip_concat_bias(self, attention_coefficients, in_nodes_features, out_nodes_features):
+        if self.log_attention_weights:  
+            self.attention_weights = attention_coefficients
+        if not out_nodes_features.is_contiguous():
+            out_nodes_features = out_nodes_features.contiguous()
+        if out_nodes_features.dim() != 3 or out_nodes_features.size(1) != self.num_heads:
+            out_nodes_features = out_nodes_features.view(-1, self.num_heads, self.num_out_features)
+        if self.add_skip_connection:  # add skip or residual connection
+            if out_nodes_features.shape[-1] == in_nodes_features.shape[-1]:  
+                out_nodes_features += in_nodes_features.unsqueeze(1)
+            else:
+                out_nodes_features += self.skip_proj(in_nodes_features).view(-1, self.num_heads, self.num_out_features)
+        if self.concat:
+            out_nodes_features = out_nodes_features.view(-1, self.num_heads * self.num_out_features)
+        else:
+            out_nodes_features = out_nodes_features.mean(dim=1)
+
+        if self.bias is not None:
+            out_nodes_features += self.bias
+
+        return out_nodes_features if self.activation is None else self.activation(out_nodes_features)
 
 
 class EGATlayer(EGAT_layer_base):
@@ -160,9 +183,9 @@ class EGATlayer(EGAT_layer_base):
         
         aggregated = torch.matmul(torch.Tensor(attention_mean.transpose(2,1)), value)
         updated_nodes = self.activation(aggregated)
-
+        updated_nodes = updated_nodes.reshape(num_nodes, self.num_out_features)
+        updated_nodes = self.skip_concat_bias(attention_weight, node_features, updated_nodes)
         with torch.no_grad():
-            updated_nodes = updated_nodes.reshape(num_nodes, self.num_out_features)
             node_similarity = torch.matmul(updated_nodes, updated_nodes.T)
             distance_decay = -edges_features_distance.squeeze(-1)
             updated_connectivity = torch.sigmoid(node_similarity) * distance_decay * degree_matrix

@@ -64,6 +64,6 @@ if __name__ == '__main__':
     mol2 = '/Users/jiaoyuan/Documents/GitHub/deeph_dft_molecules/deeph_mol/dataset/mol/3.mol2'
     edges_embed = Edges_Embedding(mol2)
     nodes1, nodes2, degree_matrix = edges_embed.forward()
-    print(nodes1.shape)
-    print(nodes2.shape)
-    print(degree_matrix.shape)
+    print(nodes1)
+    print(nodes2)
+    print(degree_matrix)
